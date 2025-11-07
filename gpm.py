@@ -24,12 +24,11 @@ def train(args, model, device, x, y, optimizer, criterion, task_id):
         loss.backward()
         # === 追加コード開始 ===
         if task_id > 0:
-            # 1タスクあたりのクラス数を取得 (taskclaが渡されていると仮定)
-            # もしくは args.num_classes / args.num_tasks などで計算
+            # 1タスクあたりのクラス数を取得 (taskclaが渡すことも)
             n_classes_per_task = 10
             past_classes = task_id * n_classes_per_task
 
-            # モデルの出力層に合わせて変更してください (例: model.fc3 や model.linear)
+            # モデルの出力層に合わせる
             output_layer = model.fc3 if hasattr(model, 'fc3') else model.linear
 
             # 過去のタスクに対応する出力ニューロンの勾配を0にする
@@ -79,14 +78,13 @@ def train_projected(
             elif (k < 15 and len(params.size()) == 1) and task_id != 0:
                 params.grad.data.fill_(0)
         
-         # === 追加コード開始 ===
+         # === 追加コード ===
         if task_id > 0:
-            # 1タスクあたりのクラス数を取得 (taskclaが渡されていると仮定)
-            # もしくは args.num_classes / args.num_tasks などで計算
+            # 1タスクあたりのクラス数を取得 (taskclaが渡すことも)
             n_classes_per_task = 10
             past_classes = task_id * n_classes_per_task
 
-            # モデルの出力層に合わせて変更してください (例: model.fc3 や model.linear)
+            # モデルの出力層に合わせる
             output_layer = model.fc3 if hasattr(model, 'fc3') else model.linear
 
             # 過去のタスクに対応する出力ニューロンの勾配を0にする

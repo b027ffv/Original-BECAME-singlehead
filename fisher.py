@@ -19,9 +19,9 @@ def compute_fisher_matrix_diag(args, model, device, optimizer, x, y, task_id, **
         data = x[b].to(device)
         target = y[b].to(device)
         if "space1" in kwargs.keys():  # TRGP
-            output = model(data, space1=kwargs["space1"], space2=kwargs["space2"])[task_id]
+            output = model(data, space1=kwargs["space1"], space2=kwargs["space2"])
         else:
-            output = model(data)[task_id]
+            output = model(data)
 
         if args.fisher_comp == "true":
             pred = output.argmax(1).flatten()

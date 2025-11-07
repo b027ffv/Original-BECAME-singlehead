@@ -303,6 +303,54 @@ def main(args):
                     **add_on,
                 )
 
+            # === Weight Aligning (WA) の実装 ===
+            if task_id > 0:
+                print(f"[Task {task_id}] Applying Weight Aligning (WA)...")
+                # 1タスクあたりのクラス数を取得 (CIFAR100-10なら10)
+                n_classes_per_task = taskcla[0][1]
+                # 過去のクラスのインデックス範囲
+                past_classes_end = task_id * n_classes_per_task
+                # 現在のクラスのインデックス範囲
+                current_classes_end = (task_id + 1) * n_classes_per_task
+                # モデルの出力層を取得
+                output_layer = model.fc3 if hasattr(model, 'fc3') else model.linear
+                with torch.no_grad():
+                    # 1. 過去のクラスの重み (Weight) の平均ノルムを計算
+                    old_weights = output_layer.weight.data[:past_classes_end]                    
+                    # クラスごと（行ごと）のL2ノルムを計算し、その平均を取る
+                    avg_norm_old = torch.mean(torch.norm(old_weights, p=2, dim=1))
+                    print(f"  Avg. norm (Old classes 0-{past_classes_end-1}): {avg_norm_old:.4f}")
+                    # 2. 現在のクラスの重み (Weight) のノルムを計算
+                    new_weights = output_layer.weight.data[past_classes_end:current_classes_end]
+                    norm_new = torch.norm(new_weights, p=2, dim=1)
+                    print(f"  Avg. norm (New classes {past_classes_end}-{current_classes_end-1}): {torch.mean(norm_new):.4f}")
+
+                    # 3. 現在のクラスの重みをスケーリングして調整
+                    # スケーリング比率 = (過去の平均ノルム / 現在のノルム)
+                    # ゼロ除算を避けるために小さな値 (epsilon) を加える
+                    epsilon = 1e-5
+                    scale_factor = avg_norm_old / (norm_new + epsilon)
+                    
+                    # (N, 1) の形状にしてブロードキャストできるようにする
+                    scale_factor = scale_factor.unsqueeze(1) 
+                    
+                    # 新しい重みをスケーリングして上書き
+                    output_layer.weight.data[past_classes_end:current_classes_end] = new_weights * scale_factor
+
+                    # 4. バイアス (Bias) も同様に調整 (存在する場合)
+                    if output_layer.bias is not None:
+                        # バイアスはL1ノルム（絶対値）の平均で調整することが多い
+                        old_bias = output_layer.bias.data[:past_classes_end]
+                        avg_norm_old_bias = torch.mean(torch.abs(old_bias))
+                        
+                        new_bias = output_layer.bias.data[past_classes_end:current_classes_end]
+                        norm_new_bias = torch.abs(new_bias)
+                        
+                        scale_factor_bias = avg_norm_old_bias / (norm_new_bias + epsilon)
+                        
+                        output_layer.bias.data[past_classes_end:current_classes_end] = new_bias * scale_factor_bias
+            
+            # === WAの実装終了 ===
             # Test
             test_loss, test_acc = test(args, model, device, xtest, ytest, criterion, task_id)
             print("Test: loss={:.3f}, acc={:.2f}%".format(test_loss, test_acc))
@@ -332,6 +380,45 @@ def main(args):
                     old_fisher=fisher,
                 )
 
+                # === ここにWAを適用 ===
+                if task_id > 0:
+                    print(f"[Task {task_id}] Applying Weight Aligning (WA) to Merged Model...")
+                    
+                    # 1タスクあたりのクラス数を取得 (taskclaはmain関数スコープにあると仮定)
+                    n_classes_per_task = taskcla[0][1]
+                    
+                    past_classes_end = task_id * n_classes_per_task
+                    current_classes_end = (task_id + 1) * n_classes_per_task
+
+                    # モデルの出力層を取得
+                    output_layer = model.fc3 if hasattr(model, 'fc3') else model.linear
+
+                    with torch.no_grad():
+                        # 1. 過去のクラスの重みの平均ノルムを計算
+                        old_weights = output_layer.weight.data[:past_classes_end]
+                        avg_norm_old = torch.mean(torch.norm(old_weights, p=2, dim=1))
+
+                        # 2. 現在のクラスの重みのノルムを計算
+                        new_weights = output_layer.weight.data[past_classes_end:current_classes_end]
+                        norm_new = torch.norm(new_weights, p=2, dim=1)
+
+                        # 3. 現在のクラスの重みをスケーリング
+                        epsilon = 1e-5
+                        scale_factor = (avg_norm_old / (norm_new + epsilon)).unsqueeze(1)
+                        output_layer.weight.data[past_classes_end:current_classes_end] = new_weights * scale_factor
+
+                        # 4. バイアスも同様に調整 (存在する場合)
+                        if output_layer.bias is not None:
+                            old_bias = output_layer.bias.data[:past_classes_end]
+                            avg_norm_old_bias = torch.mean(torch.abs(old_bias))
+                            
+                            new_bias = output_layer.bias.data[past_classes_end:current_classes_end]
+                            norm_new_bias = torch.abs(new_bias)
+                            
+                            scale_factor_bias = avg_norm_old_bias / (norm_new_bias + epsilon)
+                            output_layer.bias.data[past_classes_end:current_classes_end] = new_bias * scale_factor_bias
+                # === WA適用終了 ===
+                
                 # Test
                 test_loss, test_acc = test(args, model, device, xtest, ytest, criterion, task_id)
                 print("Test: loss={:.3f}, acc={:.2f}%".format(test_loss, test_acc))

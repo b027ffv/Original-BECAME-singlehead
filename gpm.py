@@ -22,6 +22,21 @@ def train(args, model, device, x, y, optimizer, criterion, task_id):
         output = model(data)
         loss = criterion(output, target) #タスクID削除
         loss.backward()
+        # === 追加コード開始 ===
+        if task_id > 0:
+            # 1タスクあたりのクラス数を取得 (taskclaが渡されていると仮定)
+            # もしくは args.num_classes / args.num_tasks などで計算
+            n_classes_per_task = 10
+            past_classes = task_id * n_classes_per_task
+
+            # モデルの出力層に合わせて変更してください (例: model.fc3 や model.linear)
+            output_layer = model.fc3 if hasattr(model, 'fc3') else model.linear
+
+            # 過去のタスクに対応する出力ニューロンの勾配を0にする
+            if output_layer.weight.grad is not None:
+                output_layer.weight.grad.data[:past_classes] = 0
+            if output_layer.bias is not None and output_layer.bias.grad is not None:
+                output_layer.bias.grad.data[:past_classes] = 0
         optimizer.step()
 
 
@@ -63,6 +78,22 @@ def train_projected(
                 kk += 1
             elif (k < 15 and len(params.size()) == 1) and task_id != 0:
                 params.grad.data.fill_(0)
+        
+         # === 追加コード開始 ===
+        if task_id > 0:
+            # 1タスクあたりのクラス数を取得 (taskclaが渡されていると仮定)
+            # もしくは args.num_classes / args.num_tasks などで計算
+            n_classes_per_task = 10
+            past_classes = task_id * n_classes_per_task
+
+            # モデルの出力層に合わせて変更してください (例: model.fc3 や model.linear)
+            output_layer = model.fc3 if hasattr(model, 'fc3') else model.linear
+
+            # 過去のタスクに対応する出力ニューロンの勾配を0にする
+            if output_layer.weight.grad is not None:
+                output_layer.weight.grad.data[:past_classes] = 0
+            if output_layer.bias is not None and output_layer.bias.grad is not None:
+                output_layer.bias.grad.data[:past_classes] = 0
 
         optimizer.step()
 
